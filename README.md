@@ -23,10 +23,9 @@ Some things this persistence layer does not do:
 Model of operation
 ------------------
 
-The way the persistence log functions is as follows.  
-After opening the log, the application calls Update() for every change and passes it an opaque
-desrciption of the change. The Update function serializes the change and appends it to the
-log.
+The way the persistence log functions is as follows. After opening the log, the application
+calls Update() for every change and passes it an opaque desrciption of the change.
+The Update function serializes the change and appends it to the log.
 
 When the time to rotate the log comes, the persistence layer stops writing to the
 current log and starts a fresh log. The fresh log begins with a mixture of additional
@@ -62,6 +61,13 @@ init callback for that resource. There are several ways to deal with this issue:
  - during replay, the application can ignore updates to resources that have not yet been
    created knowing that eventually it will encounter a full create descriptor as written
    during the initialization callback
+ - if the application creates log entries that involve multiple resources, for example,
+   a log entry to increment resource A and decrement resource B, then during a replay
+   it must cope with the situation where one of the resources has been created and the
+   other one hasn't. If this example, It may be that A has been created by a prior replayed
+   log entry and the app has to increment A, but B may not yet have been created and thus
+   the decrement B has to be skipped without producing an error (the correct value of B will
+   be created later during the replay).
 
 Note that the persistence layer does not prescribe what the application passes it in an
 Update() call. One option is to pass a full copy of the resource being updated or a delete
@@ -86,8 +92,8 @@ A log has the following operations:
 - create: creates a log object and names a primary destination
 - restore: reads the last log at the destination and replays all events, making
   callbacks into the application in order to recreate the state
-- addDestination: adds a secondary destination, this will cause a log rotation
 - update: records a change to a resource, i.e., writes the serialized version to the log
+- addDestination: adds a secondary destination, this will cause a log rotation
 
 Sample code
 -----------
@@ -95,8 +101,8 @@ Sample code
 ```go
 // A sample resource type
 type resourceType struct {
-	Id	int64  // unique resource ID
-	Field	string // sample data field
+	Id    int64  // unique resource ID
+	Field string // sample data field
 }
 // The set of resources in the application
 var resources map[int64]resourceType  // all resources indexed by ID
