@@ -51,6 +51,7 @@ type Log interface {
 
 // CreateLog creates a new log and errors if a pre-existing log is found.
 func CreateLog(dest LogDestination, client LogClient) (Log, error) {
+	return &pLog{}, nil
 }
 
 // OpenLog reopens an existing log, replays all log entries, and then prepares to append
@@ -58,7 +59,20 @@ func CreateLog(dest LogDestination, client LogClient) (Log, error) {
 // okToCreate flag indicates whether it's ok to start a completely new log (or whether an
 // error shold be produced if no pre-existing log is found).
 func OpenLog(dest LogDestination, client LogClient, okToCreate bool) (Log, error) {
+	return &pLog{}, nil
 }
 
 type LogDestination interface {
 }
+
+// ===== Stub implementation of do-nothing persistence log
+
+type pLog struct {
+}
+
+func (pl *pLog) Write(logEvent interface{}) error {
+	return nil
+}
+func (pl *pLog) SetSizeLimit(bytes int64)                 {}
+func (pl *pLog) AddDestination(dest LogDestination) error { return nil }
+func (pl *pLog) HealthCheck() error                       { return nil }
