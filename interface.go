@@ -2,6 +2,8 @@
 
 package persist
 
+import "encoding/gob"
+
 // LogClient is the interface the application needs to implement so the persist can call it back
 type LogClient interface {
 	// Replay is called by the persistence layer during log replay in order to replay
@@ -16,12 +18,13 @@ type LogClient interface {
 	// and shouldn't be created/updated.
 	Replay(logEvent interface{}) error
 
-	// Enumerate is called by the persistence layer in order to enumerate all live resources
-	// by making calls to Log.Write(). (If enumerate encounters an erorr it's time to panic.)
-	// Enumerate can run in parallel with new updates to resources however the application
-	// must ensure that calls to Log.Write() are in the same order as Enumerate's reads
+	// PersistAll is called by the persistence layer in order to enumerate all live resources
+	// and persist them by making calls to Log.Write().
+	// (If PersistAll encounters an erorr it's time to panic.)
+	// PersistAll can run in parallel with new updates to resources however the application
+	// must ensure that calls to Log.Write() are in the same order as PersistAll's reads
 	// and other update's writes.
-	Enumerate()
+	PersistAll()
 }
 
 type Log interface {
@@ -47,6 +50,11 @@ type Log interface {
 	// the log will be "repaired" by doing a rotation. The intent of the HealthCheck call
 	// is for the application to be able to reject requests early if the logging is broken.
 	HealthCheck() error
+
+	// Register a type being written to the log, this must be called for each type passed
+	// to Write and for any type expected in an interface type inside an event. This calls
+	// gob.Register() internally, please see the gob docs
+	Register(value interface{})
 }
 
 // CreateLog creates a new log and errors if a pre-existing log is found.
@@ -76,3 +84,9 @@ func (pl *pLog) Write(logEvent interface{}) error {
 func (pl *pLog) SetSizeLimit(bytes int64)                 {}
 func (pl *pLog) AddDestination(dest LogDestination) error { return nil }
 func (pl *pLog) HealthCheck() error                       { return nil }
+func (pl *pLog) Register(value interface{})               { gob.Register(value) }
+
+// ===== Stub implementation for do-nothing persistence log destination
+
+type NoopDest struct {
+}
