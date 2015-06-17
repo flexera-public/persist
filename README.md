@@ -1,11 +1,17 @@
 Persistence Log
 ===============
 
-The idea of a persistence log is very similar to a database replay log or write-ahead-log (WAL):
-before committing a change to a resource (arbitrary data structure) the app writes
-the new state of the resource to a log. If the app crashes, the log can be replayed
+This Golang package implements a persistence log very similar to a database replay log
+or write-ahead-log (WAL): before committing a change to a resource (arbitrary data structure)
+the app writes the new state of the resource to a log. If the app crashes, the log can be replayed
 in order to recreate all the resources. The trick is to rotate the log periodically
 so it doesn't grow indefinitely. This is what this persistence package implements.
+
+One of the special features of this persistence log is that it does not define the set of
+operations that can be persisted to the log nor does it require storage beyond the typical
+streaming encoder/decoder buffers. In particular, it does not create a copy of the log or
+of the in-memory data structure in order to start a new log or create a snapshot. Instead
+it makes a callback into the app to enumerate the set of live objects.
 
 Goals
 -----

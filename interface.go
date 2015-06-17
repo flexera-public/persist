@@ -2,7 +2,7 @@
 
 package persist
 
-import "encoding/gob"
+import "io"
 
 // LogClient is the interface the application needs to implement so the persist can call it back
 type LogClient interface {
@@ -39,7 +39,7 @@ type Log interface {
 
 	// SetSizeLimit determines when the persist layer should rotate logs. The default is
 	// 10MB
-	SetSizeLimit(bytes int64)
+	SetSizeLimit(bytes int)
 
 	// AddDestination adds additional destinations to the Log (not yet implemented)
 	AddDestination(dest LogDestination) error
@@ -57,34 +57,11 @@ type Log interface {
 	Register(value interface{})
 }
 
-// CreateLog creates a new log and errors if a pre-existing log is found.
-func CreateLog(dest LogDestination, client LogClient) (Log, error) {
-	return &pLog{}, nil
-}
-
-// OpenLog reopens an existing log, replays all log entries, and then prepares to append
-// to it. The call to OpenLog completes once any necessary replay has completed. The
-// okToCreate flag indicates whether it's ok to start a completely new log (or whether an
-// error shold be produced if no pre-existing log is found).
-func OpenLog(dest LogDestination, client LogClient, okToCreate bool) (Log, error) {
-	return &pLog{}, nil
-}
-
 type LogDestination interface {
+	StartRotate() error
+	EndRotate() error
+	io.ReadWriter
 }
-
-// ===== Stub implementation of do-nothing persistence log
-
-type pLog struct {
-}
-
-func (pl *pLog) Write(logEvent interface{}) error {
-	return nil
-}
-func (pl *pLog) SetSizeLimit(bytes int64)                 {}
-func (pl *pLog) AddDestination(dest LogDestination) error { return nil }
-func (pl *pLog) HealthCheck() error                       { return nil }
-func (pl *pLog) Register(value interface{})               { gob.Register(value) }
 
 // ===== Stub implementation for do-nothing persistence log destination
 
