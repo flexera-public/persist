@@ -26,7 +26,7 @@ ACL=public-read
 # dependencies that are used by the build&test process
 DEPEND=golang.org/x/tools/cmd/cover github.com/onsi/ginkgo/ginkgo \
        github.com/onsi/gomega github.com/rlmcpherson/s3gof3r/gof3r \
-       github.com/dkulchenko/bunch
+       github.com/dkulchenko/bunch gopkg.in/inconshreveable/log15.v2
 
 #=== below this line ideally remains unchanged, add new targets at the end  ===
 
