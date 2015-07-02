@@ -8,7 +8,7 @@
 # - to include the build status and code coverage badge in CI use (replace NAME by what
 #   you set $(NAME) to further down, and also replace magnum.travis-ci.com by travis-ci.org for
 #   publicly accessible repos [sigh]):
-#   [![Build Status](https://magnum.travis-ci.com/rightscale/NAME.svg?token=4Q13wQTY4zqXgU7Edw3B&branch=master)](https://magnum.travis-ci.com/rightscale/NAME
+#   [![Build Status](https://magnum.travis-ci.com/rightscale/NAME.svg?token=4Q13wQTY4zqXgU7Edw3B&branch=master)](https://magnum.travis-ci.com/rightscale/NAME)
 #   ![Code Coverage](https://s3.amazonaws.com/rs-code-coverage/NAME/cc_badge_master.svg)
 #
 # Top-level targets:
