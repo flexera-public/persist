@@ -1,0 +1,58 @@
+# Travis-CI for Golang projects
+# Runs the tests and produces a code coverage report.
+language: go
+go:
+  - 1.4
+env:
+  global:
+    # GITHUB_TOKEN= to push code coverage comment to github
+  - secure: "UTj3F8dTOZhjpgkaXYQfGGSxlbnnUAX9SciSMUotgI5i4wfEmKdt7GEC9LsxtO0aWgSfZSALxwxX9SVfTwgu6GvV1PoPEOcB+j4KlhEgku9ZOOT/pVyqncGZ0XusDpzZaDkJ9KlrnhBOW380nPnN747rQ+xpqmj1ZE+SMFjOcv0="
+    # COV_KEY= code coverage upload keys
+  - secure: "V69YTiaJTVCknhhTRENo4aZLheD5oK3TPv+hspOic+tcBxGCptSeBJFFiOnhMd6Ol9Rb6xzp2dXKOxJkVoeNHuRFna8i215XHulisJK8jx91rVxK1VJ74Nclc+EGg0zKR0+mH3k1/m158rwQaGFIgkUPqoFIycy35Ifpa3VXJ2A="
+
+# sudo=false makes the build run using a container
+sudo: false
+
+# I'm putting as many tasks as possible into the Makefile, hence the make depend...
+install:
+  - export PATH=$PATH:$HOME/gopath/bin # travis' worker doesn't seem to do this consistently
+  - #(cd $GOROOT/src && GOOS=darwin GOARCH=amd64 ./make.bash --no-clean) >/dev/null
+  - #(cd $GOROOT/src && GOOS=windows GOARCH=amd64 ./make.bash --no-clean) >/dev/null
+  - #(cd $GOROOT/src && GOOS=linux GOARCH=arm ./make.bash --no-clean) >/dev/null
+  - make depend
+
+# Everything else in here, we don't put the uploads into an after_success section because
+# that can cause the build to succeed even if the artifacts are not actually uploaded
+script:
+  - export NAME=`basename $TRAVIS_BUILD_DIR`
+  - echo NAME=$NAME
+  - make travis-test
+  - export PATH=./.vendor/bin:$PATH
+  - which gof3r
+  # Compute code coverage
+  - go tool cover -func=total.coverprofile > coverage.txt
+  - export COVERAGE=$(grep "^total:" coverage.txt | grep -o "[0-9\.]*")
+  - export BUILD=${TRAVIS_BUILD_NUMBER}
+  - if [[ "${TRAVIS_PULL_REQUEST}" != "false" ]]; then let BUILD=BUILD-1; fi
+  - export FILENAME="$(date +%Y-%m-%d)_${BUILD}_Coverage-${COVERAGE}.txt"
+  - mv coverage.txt $FILENAME
+  # Post code coverage comment to github
+  - export CODCOV_URL="https://s3.amazonaws.com/rs-code-coverage/${NAME}/${FILENAME}"
+  - export JSON_COMMENT="{\"body\":\"Code Coverage is ${COVERAGE}%, details at $CODCOV_URL
+    (sometimes the URL can take a few minutes to be available)\"}"
+  - |
+    if [[ "${TRAVIS_PULL_REQUEST}" != "false" ]]; then
+      curl -XPOST -s -H "Authorization: token ${GITHUB_TOKEN}" \
+           -H "Content-Type: application/json" -d "${JSON_COMMENT}" \
+           "https://api.github.com/repos/rightscale/${NAME}/issues/${TRAVIS_PULL_REQUEST}/comments"
+    fi
+  # Deploy code coverage result to S3
+  - export AWS_ACCESS_KEY_ID=AKIAI4RIGBPD3NP2RQ3Q # code coverage bucket access
+  - export AWS_SECRET_ACCESS_KEY=${COV_KEY}
+  - gof3r put -b rs-code-coverage -k ${NAME}/${FILENAME} -m x-amz-acl:public-read < ${FILENAME}
+  # Deploy code coverage badge to S3
+  - export COVERAGE_INT=$(echo $COVERAGE | cut -d. -f1)
+  - export BADGE_FILENAME=cc_badge_${TRAVIS_BRANCH}.svg
+  - export BADGE_COLOR=$( if [ ${COVERAGE_INT} -gt 80 ] ; then echo brightgreen ; elif [ ${COVERAGE_INT} -gt 40 ] ; then echo yellow ; else echo red ; fi )
+  - wget "http://img.shields.io/badge/coverage-${COVERAGE}%25-${BADGE_COLOR}.svg" -O ${BADGE_FILENAME}
+  - gof3r put -b rs-code-coverage -k ${NAME}/${BADGE_FILENAME} -m x-amz-acl:public-read -m cache-control:no-cache -m content-type:image/svg+xml < ${BADGE_FILENAME}
