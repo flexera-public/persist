@@ -53,6 +53,15 @@ $(NAME): *.go version
 gopath:
 	@echo export GOPATH="$(GOPATH)"
 
+# Installing build dependencies is a bit of a mess. Don't want to spend lots of time in
+# Travis doing this. The folllowing just relies on go get no reinstalling when it's already
+# there, like your laptop.
+depend:
+	go get -v $(DEPEND)
+
+clean:
+	rm -rf build .vendor/pkg
+
 # gofmt uses the awkward *.go */*.go because gofmt -l . descends into the .vendor tree
 # and then pointlessly complains about bad formatting in imported packages, sigh
 lint:
