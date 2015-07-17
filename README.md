@@ -1,6 +1,6 @@
 Persistence Log
 ===============
-[![Build Status](https://travis-ci.org/rightscale/persist.svg?token=4Q13wQTY4zqXgU7Edw3B&branch=master)](https://travis-ci.org/rightscale/persist)
+[![Build Status](https://travis-ci.org/rightscale/persist.svg?branch=master)](https://travis-ci.org/rightscale/persist)
 ![Code Coverage](https://s3.amazonaws.com/rs-code-coverage/persist/cc_badge_master.svg)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/rightscale/persist/blob/master/LICENSE)
 [![Godoc](https://godoc.org/github.com/rightscale/persist?status.svg)](http://godoc.org/github.com/rightscale/persist)
