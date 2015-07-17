@@ -156,12 +156,12 @@ func (fd *fileDest) startNew(useNewExt bool) error {
 }
 
 func (fd *fileDest) Read(p []byte) (int, error) {
-	fd.log.Info("Read", "replayReader", fd.replayReader)
+	//fd.log.Debug("Read", "replayReader", fd.replayReader)
 	if fd.replayReader == nil {
 		return 0, io.EOF
 	}
 	n, err := fd.replayReader.Read(p)
-	fd.log.Info("Read", "n", n, "err", err)
+	//fd.log.Debug("Read", "n", n, "err", err)
 	if err != nil {
 		// error or got to the end of replay, close all readers
 		fd.replayReader.Close()

@@ -77,8 +77,3 @@ type LogDestination interface {
 	// Close ends the entire log writing and offers a way to cleanly flush and close
 	Close()
 }
-
-// ===== Stub implementation for do-nothing persistence log destination
-
-type NoopDest struct {
-}

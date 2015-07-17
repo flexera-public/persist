@@ -44,16 +44,25 @@ func (pl *pLog) SetSizeLimit(bytes int) { pl.sizeLimit = bytes }
 // HealthCheck returns nil if everything is OK and an error if the log is in an error state
 func (pl *pLog) HealthCheck() error { return pl.errState }
 
+// hack...
+var pLogError bool
+
 // Output a log entry
 func (pl *pLog) Output(logEvent interface{}) error {
 	pl.Lock()
 	defer pl.Unlock()
 
-	pl.log.Debug("Output", "pl", pl, "ev", logEvent)
+	//pl.log.Debug("persist.Output", "ev", logEvent)
 
 	if pl.errState != nil {
+		if !pLogError {
+			pl.log.Crit("Persistence log in error state: " +
+				pl.errState.Error())
+			pLogError = true
+		}
 		return pl.errState
 	}
+	pLogError = false
 	if pl.encoder == nil {
 		return fmt.Errorf("uninitialized persistence log (nil encoder)")
 	}
@@ -118,14 +127,14 @@ func (pl *pLog) replay() (err error) {
 	for {
 		var ev interface{}
 		err := pl.decoder.Decode(&ev)
-		pl.log.Debug("replay decoded", "err", err, "ev", ev)
 		if err == io.EOF {
 			return nil // done replaying
 		}
 		if err != nil {
-			pl.log.Debug("replay failed", "err", err)
-			return fmt.Errorf("replay failed: %s", err.Error())
+			pl.log.Debug("replay decode failed", "err", err)
+			return fmt.Errorf("replay decode failed: %s", err.Error())
 		}
+		//pl.log.Debug("replay decoded", "ev", ev)
 		err = pl.client.Replay(ev)
 		if err != nil {
 			return fmt.Errorf("replay failed: %s", err.Error())
