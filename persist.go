@@ -17,16 +17,32 @@ import (
 )
 
 type pLog struct {
-	client    LogClient // client which we make callbacks
-	size      int       // size used to decide when to rotate
-	sizeLimit int       // size limit when to rotate
-	encoder   *gob.Encoder
-	decoder   *gob.Decoder   // becomes nil when done replaying
-	priDest   LogDestination // primary dest, where we initially replay from
-	secDest   LogDestination // secondary dest, no replay and OK if "down"
-	errState  error
-	log       log15.Logger
+	client     LogClient // client which we make callbacks
+	size       int       // size used to decide when to rotate
+	sizeLimit  int       // size limit when to rotate
+	sizeReplay int       // size of the initial replay
+	objects    uint64    // number of objects output, purely for stats
+	encoder    *gob.Encoder
+	decoder    *gob.Decoder   // becomes nil when done replaying
+	priDest    LogDestination // primary dest, where we initially replay from
+	secDest    LogDestination // secondary dest, no replay and OK if "down"
+	errState   error
+	log        log15.Logger
 	sync.Mutex
+}
+
+// Return some statistics about the logging
+func (pl *pLog) Stats() map[string]float64 {
+	stats := make(map[string]float64)
+	stats["LogSizeReplay"] = float64(pl.sizeReplay)
+	stats["LogSize"] = float64(pl.size + pl.sizeReplay)
+	stats["LogSizeLimit"] = float64(pl.sizeLimit)
+	stats["ObjectOutputRate"] = float64(pl.objects)
+	stats["ErrorState"] = 0.0
+	if pl.errState != nil {
+		stats["ErrorState"] = 1.0
+	}
+	return stats
 }
 
 // Close the log for test purposes
@@ -68,6 +84,7 @@ func (pl *pLog) Output(logEvent interface{}) error {
 	}
 	// perverse stuff: we need to slap the event into an interface{} so gob later allows
 	// us to decode into an interface{}
+	pl.objects += 1
 	var t interface{} = logEvent
 	err := pl.encoder.Encode(&t)
 	if err != nil {
@@ -152,6 +169,8 @@ func (pl *pLog) Write(p []byte) (int, error) {
 	l := len(p)
 	if pl.decoder == nil { // nil means we're done replaying
 		pl.size += len(p)
+	} else {
+		pl.sizeReplay += len(p)
 	}
 
 	// write to primary destination

@@ -53,6 +53,9 @@ type Log interface {
 	// the log will be "repaired" by doing a rotation. The intent of the HealthCheck call
 	// is for the application to be able to reject requests early if the logging is broken.
 	HealthCheck() error
+
+	// Stats returns a list of implementation dependent statistics as name->value
+	Stats() map[string]float64
 }
 
 // Register a type being written to the log, this must be called for each type passed
@@ -62,7 +65,7 @@ func Register(value interface{}) { gob.Register(value) }
 
 // A log destination represents something the persist layer can write log entries to, and then
 // replay them in the future. A "New" function is expected to exist for each type of log
-// desitnation in order to open/create it. At open time, the writer must work, and if there
+// destination in order to open/create it. At open time, the writer must work, and if there
 // is an old log to replay the reader must work too.
 type LogDestination interface {
 	// StartRotate() tells the dest to open a fresh log dest
