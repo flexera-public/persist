@@ -15,7 +15,7 @@ import (
 
 // log client used for testing
 type testLogClient struct {
-	i    int  // log generation, incremented to distinguing rotations
+	i    int  // log generation, incremented to distinguish rotations
 	n    int  // count number of objects replayed
 	intr bool // interrupt persistAll
 }
@@ -23,7 +23,6 @@ type testLogClient struct {
 // verifies that what's being replayed is what we expect
 func (tlc *testLogClient) Replay(ev interface{}) error {
 	log15.Info("Replay called", "ev", ev, "i", tlc.i, "n", tlc.n)
-	Ω(tlc.n).Should(BeNumerically("<", 3))
 	switch tlc.n {
 	case 0:
 		Ω(ev).Should(Equal(&logEv1{S: fmt.Sprintf("hello world #%d!", tlc.i)}))
@@ -31,6 +30,10 @@ func (tlc *testLogClient) Replay(ev interface{}) error {
 		Ω(ev).Should(Equal(&logEv2{A: 55 + tlc.i, B: "Hello Again"}))
 	case 2:
 		Ω(ev).Should(Equal(&logEv1{S: "not again!"}))
+	case 10:
+		Ω(ev).Should(Equal(&logEv2{A: tlc.n - 3, B: "A log event"}))
+		//default:
+		//	Ω(ev).Should(Equal(&logEv2{A: tlc.n - 3, B: "A log event"}))
 	}
 	tlc.n++
 	return nil
@@ -39,11 +42,12 @@ func (tlc *testLogClient) Replay(ev interface{}) error {
 // persist some new data to the new log...
 func (tlc *testLogClient) PersistAll(pl Log) {
 	log15.Info("Populating log", "i", tlc.i)
+	Ω(pl.Output(&logEv1{S: fmt.Sprintf("hello world #%d!", tlc.i+1)})).ShouldNot(HaveOccurred())
 	if tlc.intr {
+		pl.(*pLog).rotating = false
 		pl.(*pLog).Close()
 		return
 	}
-	Ω(pl.Output(&logEv1{S: fmt.Sprintf("hello world #%d!", tlc.i+1)})).ShouldNot(HaveOccurred())
 	Ω(pl.Output(&logEv2{A: 55 + tlc.i + 1, B: "Hello Again"})).ShouldNot(HaveOccurred())
 	Ω(pl.Output(&logEv1{S: "not again!"})).ShouldNot(HaveOccurred())
 }
@@ -92,9 +96,9 @@ var _ = Describe("NewLog", func() {
 		return pl, &logClient
 	}
 
-	rereadLog := func(oldI int) Log {
+	rereadLog := func(oldI, n int) Log {
 		pl, lc := startNewLog(oldI, false)
-		Ω(lc.(*testLogClient).n).Should(Equal(3))
+		Ω(lc.(*testLogClient).n).Should(Equal(n))
 		return pl
 	}
 
@@ -110,7 +114,7 @@ var _ = Describe("NewLog", func() {
 		pl.(*pLog).Close()
 
 		By("re-reading the log")
-		pl = rereadLog(1)
+		pl = rereadLog(1, 3)
 		pl.(*pLog).Close()
 	})
 
@@ -123,26 +127,56 @@ var _ = Describe("NewLog", func() {
 		rereadLogInterrupted(1)
 
 		By("re-reading the log again")
-		pl = rereadLog(1)
+		pl = rereadLog(1, 4)
 		pl.(*pLog).Close()
 
 		By("re-reading the log yet again")
-		pl = rereadLog(2)
+		pl = rereadLog(2, 3)
 		pl.(*pLog).Close()
 	})
 
-	/*
-		It("verifies log rotation", func() {
-			pl, _ := startNewLog(0, false)
-			// set a small size limit so we get it to rotate
-			pl.SetSizeLimit(100)
-			for i := 0; i <= 100; i++ {
-				data := logEv2{B: "A log event", A: i}
-				pl.Output(&data)
-			}
-			//
+	It("verifies log rotation", func() {
+		By("starting a new log")
+		pl, _ := startNewLog(0, false)
+		// set a small size limit so we get it to rotate
+		pl.SetSizeLimit(100)
+		for i := 0; i <= 100; i++ {
+			data := logEv2{B: "A log event", A: i}
+			pl.Output(&data)
+		}
+		pl.(*pLog).Close()
 
-		})
-	*/
+		By("re-reading the log")
+		pl = rereadLog(1, 3)
+		pl.(*pLog).Close()
+
+		By("re-reading the log again")
+		pl = rereadLog(2, 3)
+		pl.(*pLog).Close()
+
+	})
+
+	It("verifies interrupted log rotation", func() {
+		By("starting a new log")
+		pl, lc := startNewLog(0, false)
+		// set a small size limit so we get it to rotate
+		pl.SetSizeLimit(100)
+		lc.(*testLogClient).intr = true
+		for i := 0; i <= 100; i++ {
+			data := logEv2{B: "A log event", A: i}
+			pl.Output(&data)
+		}
+		pl.(*pLog).Close()
+
+		By("re-reading the log")
+		pl, lc = startNewLog(1, false)
+		Ω(lc.(*testLogClient).n).Should(BeNumerically(">", 10))
+		pl.(*pLog).Close()
+
+		By("re-reading the log again")
+		pl = rereadLog(2, 3)
+		pl.(*pLog).Close()
+
+	})
 
 })

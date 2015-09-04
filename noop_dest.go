@@ -17,14 +17,14 @@ func NewNoopDest(log log15.Logger) (LogDestination, error) {
 	return &nd, nil
 }
 
-func (nd *noopDest) Read(p []byte) (int, error) {
-	return 0, io.EOF
-}
-
 func (nd *noopDest) Close() {}
 
 func (nd *noopDest) Write(p []byte) (int, error) {
 	return len(p), nil
+}
+
+func (nd *noopDest) ReplayReaders() []io.ReadCloser {
+	return nil
 }
 
 // StartRotate is called by persist in order to start a new log file.

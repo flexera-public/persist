@@ -23,7 +23,7 @@ type LogClient interface {
 
 	// PersistAll is called by the persistence layer in order to enumerate all live resources
 	// and persist them by making calls to Log.Write().
-	// (If PersistAll encounters an erorr it's time to panic.)
+	// (If PersistAll encounters an error it's time to panic.)
 	// PersistAll can run in parallel with new updates to resources however the application
 	// must ensure that calls to Log.Write() are in the same order as PersistAll's reads
 	// and other update's writes.
@@ -68,15 +68,18 @@ func Register(value interface{}) { gob.Register(value) }
 // destination in order to open/create it. At open time, the writer must work, and if there
 // is an old log to replay the reader must work too.
 type LogDestination interface {
-	// StartRotate() tells the dest to open a fresh log dest
+	// StartRotate() tells the dest to open a fresh log dest and start writing all output to
+	// this new destination
 	StartRotate() error
 	// EndRotate() tells the dest that the fresh log dest has a complete snapshot and
 	// thus is now "stand-alone" and older logs are no longer needed; this is called after
 	// StartRotate() *and* after the initial registration of the log destination
 	EndRotate() error
-	// reader reads from replay log with EOF indicating end of replay,
-	// writer writes to current (new) log
-	io.ReadWriter
+	// Writer writes to current (new) log
+	io.Writer
+	// ReplayReaders returns an arra of readers for each log that needs to be replayed
+	// in sequence
+	ReplayReaders() []io.ReadCloser
 	// Close ends the entire log writing and offers a way to cleanly flush and close
 	Close()
 }

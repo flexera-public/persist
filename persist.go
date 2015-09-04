@@ -23,9 +23,9 @@ type pLog struct {
 	sizeReplay int       // size of the initial replay
 	objects    uint64    // number of objects output, purely for stats
 	encoder    *gob.Encoder
-	decoder    *gob.Decoder   // becomes nil when done replaying
 	priDest    LogDestination // primary dest, where we initially replay from
 	secDest    LogDestination // secondary dest, no replay and OK if "down"
+	rotating   bool           // avoid concurrent rotations
 	errState   error
 	log        log15.Logger
 	sync.Mutex
@@ -50,10 +50,20 @@ func (pl *pLog) Stats() map[string]float64 {
 
 // Close the log for test purposes
 func (pl *pLog) Close() {
+	for {
+		pl.Lock()
+		if !pl.rotating {
+			break
+		}
+		pl.Unlock()
+		time.Sleep(1 * time.Millisecond)
+	}
+
 	pl.priDest.Close()
 	if pl.secDest != nil {
 		pl.secDest.Close()
 	}
+	pl.Unlock()
 }
 
 // SetSizeLimit sets the log size limit at which a rotation occurs, the size value is in
@@ -92,8 +102,8 @@ func (pl *pLog) Output(logEvent interface{}) error {
 	err := pl.encoder.Encode(&t)
 	if err != nil {
 		pl.errState = err
-	} else if pl.size > pl.sizeLimit {
-		err = pl.rotate()
+	} else if !pl.rotating && pl.size > pl.sizeLimit {
+		pl.rotate()
 	}
 	return err
 }
@@ -114,52 +124,85 @@ func (pl *pLog) SetSecondaryDestination(dest LogDestination) error {
 	*/
 }
 
-// perform a log rotation
-func (pl *pLog) rotate() error {
+// perform a log rotation, must be called while holding the pl.Lock()
+func (pl *pLog) rotate() {
+	if pl.rotating {
+		return
+	}
+	pl.rotating = true
+	pl.log.Info("Persist: starting rotation")
+	go pl.finishRotate()
+}
+
+func (pl *pLog) finishRotate() {
 	// tell all log destinations to start a rotation
+	pl.Lock()
+	defer pl.Unlock()
+	pl.size = 0
+	pl.sizeReplay = 0
 	err := pl.priDest.StartRotate()
 	if pl.secDest != nil {
 		pl.secDest.StartRotate() // TODO: record error
 	}
 	if err != nil {
 		pl.errState = err
-		return err
+		return
 	}
+	// we need a new encoder 'cause we start a fresh stream
+	pl.encoder = gob.NewEncoder(pl)
 
-	// now create a full snapshot
+	// now create a full snapshot, relinquish the lock while doing that 'cause otherwise
+	// we end up with deadlocks since PersistAll will end up calling pl.Output()
+	pl.Unlock()
 	pl.client.PersistAll(pl)
+	pl.Lock()
 
 	// tell all log destinations that we're done with the rotation
 	err = pl.priDest.EndRotate()
 	if pl.secDest != nil {
 		pl.secDest.EndRotate() // TODO: record error
 	}
+	pl.rotating = false
 	if err != nil {
+		pl.log.Crit("Persist: finished rotation with error",
+			"replay_size", pl.sizeReplay, "err", err)
 		pl.errState = err
-		return err
+	} else {
+		pl.log.Info("Persist: finished rotation", "replay_size", pl.sizeReplay)
 	}
-	return nil
+	return
 }
 
 // replay a log file
 func (pl *pLog) replay() (err error) {
-	// iterate reading one log entry after another until EOF is reached
-	for {
-		var ev interface{}
-		err := pl.decoder.Decode(&ev)
-		if err == io.EOF {
-			return nil // done replaying
+	for i, rr := range pl.priDest.ReplayReaders() {
+		pl.log.Info("Starting replay", "log_num", i+1)
+		dec := gob.NewDecoder(rr)
+		// iterate reading one log entry after another until EOF is reached
+		count := 0
+		for {
+			var ev interface{}
+			err := dec.Decode(&ev)
+			if err == io.EOF {
+				break // done replaying
+			}
+			if err != nil {
+				pl.log.Debug("replay decode failed", "err", err, "log_num", i+1,
+					"count", count)
+				return fmt.Errorf("replay decode failed in log %d after %d entries: %s",
+					i+1, count, err.Error())
+			}
+			//pl.log.Debug("replay decoded", "ev", ev)
+			count += 1
+			err = pl.client.Replay(ev)
+			if err != nil {
+				return fmt.Errorf("replay failed on entry %d: %s", count, err.Error())
+			}
 		}
-		if err != nil {
-			pl.log.Debug("replay decode failed", "err", err)
-			return fmt.Errorf("replay decode failed: %s", err.Error())
-		}
-		//pl.log.Debug("replay decoded", "ev", ev)
-		err = pl.client.Replay(ev)
-		if err != nil {
-			return fmt.Errorf("replay failed: %s", err.Error())
-		}
+		rr.Close()
 	}
+	pl.log.Info("Ending replay", "logs", len(pl.priDest.ReplayReaders()))
+	return nil
 }
 
 // Write is called by the gob encoder and needs to write the bytes to all destinations
@@ -170,7 +213,7 @@ func (pl *pLog) Write(p []byte) (int, error) {
 
 	// track size for log rotation, initial snapshot doesn't count towards limit
 	l := len(p)
-	if pl.decoder == nil { // nil means we're done replaying
+	if !pl.rotating {
 		pl.size += len(p)
 	} else {
 		pl.sizeReplay += len(p)
@@ -191,19 +234,6 @@ func (pl *pLog) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// Read is called by the gob decoder and needs to read the replay from the primary dest only
-func (pl *pLog) Read(p []byte) (int, error) {
-	if pl.errState != nil {
-		return 0, pl.errState // in error state don't move!
-	}
-
-	n, err := pl.priDest.Read(p)
-	if err != nil && err != io.EOF {
-		pl.errState = err
-	}
-	return n, err
-}
-
 // NewLog reopens an existing log, replays all log entries, and then prepares to append
 // to it. The call to NewLog completes once any necessary replay has completed.
 func NewLog(priDest LogDestination, client LogClient, logger log15.Logger) (Log, error) {
@@ -214,9 +244,7 @@ func NewLog(priDest LogDestination, client LogClient, logger log15.Logger) (Log,
 		log:       logger.New("start", time.Now()),
 	}
 	pl.encoder = gob.NewEncoder(pl)
-	pl.decoder = gob.NewDecoder(pl)
 
-	pl.log.Info("Starting replay")
 	err := pl.replay()
 	if err != nil {
 		pl.errState = err
@@ -226,8 +254,9 @@ func NewLog(priDest LogDestination, client LogClient, logger log15.Logger) (Log,
 
 	// now create a full snapshot
 	pl.log.Info("Starting snapshot")
+	pl.rotating = true
 	pl.client.PersistAll(pl)
-	pl.decoder = nil // signal that replay is done
+	pl.rotating = false
 	pl.log.Info("Snapshot done")
 
 	// tell all log destinations that we're done with the rotation

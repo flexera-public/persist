@@ -62,14 +62,11 @@ var _ = Describe("FileDest", func() {
 		Ω(err).ShouldNot(HaveOccurred())
 		Ω(fd).ShouldNot(BeNil())
 
-		buf := make([]byte, 100)
-		n, err := fd.Read(buf)
-		Ω(err).Should(Equal(io.EOF))
-		Ω(n).Should(Equal(0))
+		Ω(fd.ReplayReaders()).Should(BeNil())
 
 		Ω(fd.EndRotate()).ShouldNot(HaveOccurred())
 
-		n, err = fd.Write([]byte("Hello World"))
+		n, err := fd.Write([]byte("Hello World"))
 		Ω(err).ShouldNot(HaveOccurred())
 		Ω(n).Should(Equal(11))
 
@@ -88,12 +85,15 @@ var _ = Describe("FileDest", func() {
 		Ω(fd).ShouldNot(BeNil())
 
 		buf := make([]byte, 100)
-		n, err := fd.Read(buf)
+		rr := fd.ReplayReaders()
+		Ω(rr).Should(HaveLen(1))
+
+		n, err := rr[0].Read(buf)
 		Ω(err).ShouldNot(HaveOccurred())
 		Ω(n).Should(Equal(22))
 		Ω(buf[:n]).Should(Equal([]byte("Hello WorldHello Again")))
 
-		n, err = fd.Read(buf)
+		n, err = rr[0].Read(buf)
 		if err == nil {
 			log15.Warn("Read not EOF", "n", n)
 		}
@@ -111,19 +111,26 @@ var _ = Describe("FileDest", func() {
 		Ω(fd).ShouldNot(BeNil())
 
 		buf := make([]byte, 100)
+		rr := fd.ReplayReaders()
+		Ω(rr).Should(HaveLen(2))
+
 		// replays the first log file
-		n, err := fd.Read(buf)
+		n, err := rr[0].Read(buf)
 		Ω(err).ShouldNot(HaveOccurred())
 		Ω(n).Should(Equal(22))
 		Ω(buf[:n]).Should(Equal([]byte("Hello WorldHello Again")))
+
+		n, err = rr[0].Read(buf)
+		Ω(err).Should(Equal(io.EOF))
+		Ω(n).Should(Equal(0))
 
 		// replays the second log file
-		n, err = fd.Read(buf)
+		n, err = rr[1].Read(buf)
 		Ω(err).ShouldNot(HaveOccurred())
 		Ω(n).Should(Equal(22))
 		Ω(buf[:n]).Should(Equal([]byte("Hello WorldHello Again")))
 
-		n, err = fd.Read(buf)
+		n, err = rr[1].Read(buf)
 		Ω(err).Should(Equal(io.EOF))
 		Ω(n).Should(Equal(0))
 
@@ -203,8 +210,16 @@ var _ = Describe("FileDest", func() {
 	It("verifies log rotation", func() {
 		fd := startNewLog()
 		rotateLog(fd)
-		fd = rereadLog2x()
 		Ω(fd.EndRotate()).ShouldNot(HaveOccurred())
+		fd = rereadLog()
+		fd.Close()
+	})
+
+	It("verifies log rotation with failure", func() {
+		fd := startNewLog()
+		rotateLog(fd)
+		By("rotation fails here")
+		fd = rereadLog2x()
 		fd.Close()
 	})
 

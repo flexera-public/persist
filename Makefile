@@ -47,7 +47,7 @@ PATH:=$(PWD)/.vendor/bin:$(PATH)
 
 # the default target builds a binary in the top-level dir for whatever the local OS is
 default: $(NAME)
-$(NAME): *.go version
+$(NAME): *.go
 	go build -o $(NAME) .
 
 gopath:
