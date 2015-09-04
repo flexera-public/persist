@@ -33,6 +33,9 @@ type pLog struct {
 
 // Return some statistics about the logging
 func (pl *pLog) Stats() map[string]float64 {
+	pl.Lock()
+	defer pl.Unlock()
+
 	stats := make(map[string]float64)
 	stats["LogSizeReplay"] = float64(pl.sizeReplay)
 	stats["LogSize"] = float64(pl.size + pl.sizeReplay)
@@ -224,6 +227,7 @@ func NewLog(priDest LogDestination, client LogClient, logger log15.Logger) (Log,
 	// now create a full snapshot
 	pl.log.Info("Starting snapshot")
 	pl.client.PersistAll(pl)
+	pl.decoder = nil // signal that replay is done
 	pl.log.Info("Snapshot done")
 
 	// tell all log destinations that we're done with the rotation
