@@ -163,12 +163,13 @@ func (pl *pLog) finishRotate() {
 		pl.secDest.EndRotate() // TODO: record error
 	}
 	pl.rotating = false
+	pl.log.Info("Finished rotation", "replay_size", pl.sizeReplay, "err", err)
 	if err != nil {
 		pl.log.Crit("Persist: finished rotation with error",
 			"replay_size", pl.sizeReplay, "err", err)
 		pl.errState = err
 	} else {
-		pl.log.Info("Persist: finished rotation", "replay_size", pl.sizeReplay)
+		pl.log.Info("Finished rotation", "replay_size", pl.sizeReplay)
 	}
 	return
 }
@@ -201,7 +202,7 @@ func (pl *pLog) replay() (err error) {
 		}
 		rr.Close()
 	}
-	pl.log.Info("Ending replay", "logs", len(pl.priDest.ReplayReaders()))
+	pl.log.Debug("Ending replay", "logs", len(pl.priDest.ReplayReaders()))
 	return nil
 }
 
@@ -245,6 +246,7 @@ func NewLog(priDest LogDestination, client LogClient, logger log15.Logger) (Log,
 	}
 	pl.encoder = gob.NewEncoder(pl)
 
+	pl.log.Debug("Starting replay")
 	err := pl.replay()
 	if err != nil {
 		pl.errState = err
@@ -253,7 +255,7 @@ func NewLog(priDest LogDestination, client LogClient, logger log15.Logger) (Log,
 	pl.log.Info("Replay done")
 
 	// now create a full snapshot
-	pl.log.Info("Starting snapshot")
+	pl.log.Debug("Starting snapshot")
 	pl.rotating = true
 	pl.client.PersistAll(pl)
 	pl.rotating = false
