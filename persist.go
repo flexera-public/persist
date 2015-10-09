@@ -163,9 +163,8 @@ func (pl *pLog) finishRotate() {
 		pl.secDest.EndRotate() // TODO: record error
 	}
 	pl.rotating = false
-	pl.log.Info("Finished rotation", "replay_size", pl.sizeReplay, "err", err)
 	if err != nil {
-		pl.log.Crit("Persist: finished rotation with error",
+		pl.log.Crit("Finished rotation with error",
 			"replay_size", pl.sizeReplay, "err", err)
 		pl.errState = err
 	} else {
